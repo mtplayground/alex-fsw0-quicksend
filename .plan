@@ -1,0 +1,57 @@
+# Architecture Plan
+
+## Product Scope
+
+Quicksend is a one-page email sending app with an Axum API, a React + Tailwind frontend served by the Rust backend, validation on the send payload, platform email proxy delivery, rate limiting, and tests from unit coverage through the main submit-to-success path.
+
+## Module Structure
+
+- `Cargo.toml`: Rust workspace/package configuration for the Axum backend.
+- `src/main.rs`: process entry point, configuration loading, listener binding, and server startup.
+- `src/app.rs`: Axum router construction, shared application state wiring, static asset service, and route composition.
+- `src/config.rs`: environment-driven configuration such as bind address, static asset directory, email proxy URL/token, rate limit settings, and optional CORS origin.
+- `src/error.rs`: application error type and conversion into consistent JSON HTTP responses.
+- `src/models.rs`: shared request/response DTOs for the send API, including serde types used by tests.
+- `src/validation.rs`: payload validation rules for recipient, subject, and message content.
+- `src/email.rs`: email delivery abstraction plus platform proxy implementation.
+- `src/rate_limit.rs`: per-IP rate limiter state and Axum extractor/middleware integration.
+- `src/routes/send.rs`: `POST /api/send` handler that validates, rate-limits, and dispatches email.
+- `frontend/`: Vite React + Tailwind app.
+- `frontend/src/App.tsx`: one-page send form and submission state.
+- `frontend/src/api.ts`: typed client for `POST /api/send`.
+- `frontend/src/types.ts`: frontend copy of public API shapes or generated-compatible definitions.
+- `tests/`: integration and end-to-end tests once both backend and frontend exist.
+
+## Shared Types
+
+The backend owns canonical API contracts in `src/models.rs`:
+
+- `SendRequest`: recipient email, subject, and message body.
+- `SendResponse`: accepted/success status and optional provider message id.
+- `ErrorResponse`: stable `code` and user-safe `message`.
+
+The frontend mirrors these shapes in `frontend/src/types.ts` and treats backend error `code` values as the stable integration surface.
+
+## Issue Dependencies
+
+- #1 establishes the Rust/Axum project, configuration, health route, app state, and baseline build.
+- #2 depends on #1 and adds the React + Tailwind build served by Axum.
+- #3 depends on #1 and adds the send route, request/response types, and validation.
+- #4 depends on #3 and replaces the delivery stub with the platform email proxy client.
+- #5 depends on #3 and wraps the send route with per-IP rate limiting.
+- #6 depends on #3, #4, and #5 for validation, limiter, and send-flow unit tests.
+- #7 depends on #2 and builds the one-page send form UI.
+- #8 depends on #3 and #7 to submit the form to the real API.
+- #9 depends on #2, #3, #7, and #8 for an end-to-end success path.
+- #10 depends on all prior work and hardens error handling, environment documentation, and self-hosted deployment behavior.
+
+## Key Design Decisions
+
+- Keep Axum as the single production server so the deployed app serves both static frontend assets and `/api/*` routes from one origin.
+- Load configuration from environment variables with conservative defaults for local development and explicit required values for production email delivery.
+- Respect reverse proxy headers when deriving public origin: prefer `X-Forwarded-Host` and `X-Forwarded-Proto`, and allow `ALLOWED_CORS_ORIGIN` when CORS checks are introduced.
+- Do not apply origin checks to static asset requests; only API routes should participate in CORS or same-origin validation if needed.
+- Use a delivery trait for email sending so tests can inject a fake sender and production can call the platform email proxy.
+- Implement per-IP rate limiting inside shared application state with deterministic time abstractions where practical, so unit tests do not rely on sleeps.
+- Return structured JSON errors from API routes and keep frontend user messages generic while logging operational details server-side.
+- Keep the frontend small and direct: one page, client-side validation that mirrors server rules, explicit loading/success/error states, and no marketing landing page.
