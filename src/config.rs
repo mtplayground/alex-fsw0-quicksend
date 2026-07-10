@@ -2,6 +2,7 @@ use std::{env, fmt, net::SocketAddr};
 
 const DEFAULT_HOST: &str = "0.0.0.0";
 const DEFAULT_PORT: u16 = 8080;
+const DEFAULT_FRONTEND_DIST_DIR: &str = "frontend/dist";
 const DEFAULT_RATE_LIMIT_REQUESTS_PER_WINDOW: u32 = 5;
 const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 
@@ -9,6 +10,7 @@ const DEFAULT_RATE_LIMIT_WINDOW_SECONDS: u64 = 60;
 pub struct Config {
     pub host: std::net::IpAddr,
     pub port: u16,
+    pub frontend_dist_dir: String,
     pub email_proxy_url: Option<String>,
     pub email_app_token: Option<String>,
     pub rate_limit_requests_per_window: u32,
@@ -29,6 +31,8 @@ impl Config {
                     })?,
             )?,
             port: read_parsed("PORT", DEFAULT_PORT)?,
+            frontend_dist_dir: read_optional("FRONTEND_DIST_DIR")?
+                .unwrap_or_else(|| DEFAULT_FRONTEND_DIST_DIR.to_string()),
             email_proxy_url: read_optional("MCTAI_EMAIL_URL")?,
             email_app_token: read_optional("MCTAI_EMAIL_APP_TOKEN")?,
             rate_limit_requests_per_window: read_parsed(
