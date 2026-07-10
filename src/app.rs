@@ -1,5 +1,6 @@
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
+use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
 
@@ -9,10 +10,14 @@ pub struct AppState {
 }
 
 pub fn build_router(config: Config) -> Router {
+    let frontend_dist_dir = config.frontend_dist_dir.clone();
+    let index_path = format!("{frontend_dist_dir}/index.html");
+    let static_files = ServeDir::new(frontend_dist_dir).fallback(ServeFile::new(index_path));
     let state = AppState { config };
 
     Router::new()
         .route("/health", get(health_check))
+        .fallback_service(static_files)
         .with_state(state)
 }
 
