@@ -1,5 +1,6 @@
 import { FormEvent, useMemo, useState } from 'react';
 
+import { SendApiError, sendMessage } from './api';
 import { SendFormValues, validateSendForm } from './validation';
 
 const emptyForm: SendFormValues = {
@@ -21,11 +22,15 @@ export function App() {
   const [touched, setTouched] = useState<Record<FieldName, boolean>>(emptyTouched);
   const [submitted, setSubmitted] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | undefined>();
+  const [successMessage, setSuccessMessage] = useState<string | undefined>();
 
   const errors = useMemo(() => validateSendForm(values), [values]);
   const hasErrors = Object.values(errors).some(Boolean);
 
   function updateField(field: FieldName, value: string) {
+    setSubmitError(undefined);
+    setSuccessMessage(undefined);
     setValues((current) => ({
       ...current,
       [field]: value,
@@ -47,9 +52,11 @@ export function App() {
     return errors[field];
   }
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmitted(true);
+    setSubmitError(undefined);
+    setSuccessMessage(undefined);
     setTouched({
       recipientEmail: true,
       subject: true,
@@ -61,9 +68,21 @@ export function App() {
     }
 
     setIsSubmitting(true);
-    window.setTimeout(() => {
+    try {
+      const response = await sendMessage(values);
+      setValues(emptyForm);
+      setTouched(emptyTouched);
+      setSubmitted(false);
+      setSuccessMessage(response.message);
+    } catch (error) {
+      setSubmitError(
+        error instanceof SendApiError
+          ? error.message
+          : 'Could not send the message. Try again later.',
+      );
+    } finally {
       setIsSubmitting(false);
-    }, 500);
+    }
   }
 
   return (
@@ -87,6 +106,8 @@ export function App() {
           onSubmit={handleSubmit}
         >
           <div className="space-y-5">
+            <StatusMessage error={submitError} success={successMessage} />
+
             <FormField
               error={fieldError('recipientEmail')}
               inputMode="email"
@@ -132,6 +153,33 @@ export function App() {
         </form>
       </section>
     </main>
+  );
+}
+
+function StatusMessage({
+  error,
+  success,
+}: {
+  error?: string;
+  success?: string;
+}) {
+  if (!error && !success) {
+    return null;
+  }
+
+  const isError = Boolean(error);
+
+  return (
+    <div
+      className={`rounded-md border px-4 py-3 text-sm ${
+        isError
+          ? 'border-rose-200 bg-rose-50 text-rose-800'
+          : 'border-emerald-200 bg-emerald-50 text-emerald-800'
+      }`}
+      role={isError ? 'alert' : 'status'}
+    >
+      {error ?? success}
+    </div>
   );
 }
 
