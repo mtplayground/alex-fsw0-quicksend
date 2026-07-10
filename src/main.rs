@@ -2,6 +2,7 @@ mod app;
 mod config;
 mod email;
 mod models;
+mod rate_limit;
 mod routes;
 mod validation;
 
