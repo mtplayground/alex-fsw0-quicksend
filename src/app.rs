@@ -1,8 +1,13 @@
-use axum::{extract::State, routing::get, Json, Router};
+use axum::{
+    extract::State,
+    routing::{get, post},
+    Json, Router,
+};
 use serde::Serialize;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use crate::routes;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -17,6 +22,7 @@ pub fn build_router(config: Config) -> Router {
 
     Router::new()
         .route("/health", get(health_check))
+        .route("/api/send", post(routes::send::send))
         .fallback_service(static_files)
         .with_state(state)
 }
