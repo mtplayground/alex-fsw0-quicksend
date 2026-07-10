@@ -24,10 +24,17 @@ pub struct RateLimiter {
 
 impl RateLimiter {
     pub fn from_config(config: &Config) -> Self {
+        Self::new(
+            config.rate_limit_requests_per_window,
+            Duration::from_secs(config.rate_limit_window_seconds),
+        )
+    }
+
+    pub fn new(limit: u32, window: Duration) -> Self {
         Self {
             buckets: Arc::new(Mutex::new(HashMap::new())),
-            limit: config.rate_limit_requests_per_window,
-            window: Duration::from_secs(config.rate_limit_window_seconds),
+            limit,
+            window,
         }
     }
 
@@ -123,4 +130,46 @@ fn header_value(headers: &HeaderMap, name: &'static str) -> Option<String> {
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(ToOwned::to_owned)
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{thread, time::Duration};
+
+    use super::{RateLimitDecision, RateLimiter};
+
+    #[test]
+    fn allows_requests_under_limit() {
+        let limiter = RateLimiter::new(2, Duration::from_secs(60));
+
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+    }
+
+    #[test]
+    fn blocks_requests_over_limit() {
+        let limiter = RateLimiter::new(2, Duration::from_secs(60));
+
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+        assert!(matches!(
+            limiter.check("192.0.2.10"),
+            RateLimitDecision::Limited { .. }
+        ));
+    }
+
+    #[test]
+    fn resets_after_window() {
+        let limiter = RateLimiter::new(1, Duration::from_millis(10));
+
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+        assert!(matches!(
+            limiter.check("192.0.2.10"),
+            RateLimitDecision::Limited { .. }
+        ));
+
+        thread::sleep(Duration::from_millis(15));
+
+        assert!(matches!(limiter.check("192.0.2.10"), RateLimitDecision::Allowed));
+    }
 }
