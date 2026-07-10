@@ -1,6 +1,7 @@
 target/
 node_modules/
 playwright-report/
+release/
 test-results/
 .gh_token
 .database_url
