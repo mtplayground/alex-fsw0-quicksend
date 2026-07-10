@@ -98,3 +98,52 @@ fn is_valid_local_part_character(character: char) -> bool {
                 | '.'
         )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::validate_send_request;
+    use crate::models::SendRequest;
+
+    #[test]
+    fn accepts_valid_payload() {
+        let request = send_request("person@example.com", "Hello", "A short message");
+
+        assert!(validate_send_request(&request).is_ok());
+    }
+
+    #[test]
+    fn rejects_malformed_email() {
+        let request = send_request("not-an-email", "Hello", "A short message");
+
+        let errors = validation_errors(&request);
+
+        assert!(errors
+            .iter()
+            .any(|error| error.field == "recipient_email"));
+    }
+
+    #[test]
+    fn rejects_blank_subject_and_message() {
+        let request = send_request("person@example.com", "  ", "\n\t");
+
+        let errors = validation_errors(&request);
+
+        assert!(errors.iter().any(|error| error.field == "subject"));
+        assert!(errors.iter().any(|error| error.field == "message"));
+    }
+
+    fn send_request(recipient_email: &str, subject: &str, message: &str) -> SendRequest {
+        SendRequest {
+            recipient_email: recipient_email.to_string(),
+            subject: subject.to_string(),
+            message: message.to_string(),
+        }
+    }
+
+    fn validation_errors(request: &SendRequest) -> Vec<crate::models::FieldError> {
+        match validate_send_request(request) {
+            Ok(()) => panic!("expected validation errors"),
+            Err(errors) => errors,
+        }
+    }
+}

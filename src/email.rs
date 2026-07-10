@@ -7,8 +7,23 @@ use crate::{config::Config, models::SendRequest};
 
 #[derive(Clone)]
 pub struct EmailClient {
-    endpoint: Option<EmailEndpoint>,
-    http_client: reqwest::Client,
+    transport: EmailTransport,
+}
+
+#[derive(Clone)]
+enum EmailTransport {
+    Proxy {
+        endpoint: Option<EmailEndpoint>,
+        http_client: reqwest::Client,
+    },
+    #[cfg(test)]
+    Mock {
+        responses: std::sync::Arc<
+            std::sync::Mutex<
+                std::collections::VecDeque<Result<EmailDeliveryOutcome, EmailError>>,
+            >,
+        >,
+    },
 }
 
 impl EmailClient {
@@ -22,55 +37,94 @@ impl EmailClient {
         };
 
         Self {
-            endpoint,
-            http_client: reqwest::Client::new(),
+            transport: EmailTransport::Proxy {
+                endpoint,
+                http_client: reqwest::Client::new(),
+            },
+        }
+    }
+
+    #[cfg(test)]
+    pub fn mock(responses: Vec<Result<EmailDeliveryOutcome, EmailError>>) -> Self {
+        Self {
+            transport: EmailTransport::Mock {
+                responses: std::sync::Arc::new(std::sync::Mutex::new(
+                    std::collections::VecDeque::from(responses),
+                )),
+            },
         }
     }
 
     pub async fn send(&self, request: &SendRequest) -> Result<EmailDeliveryOutcome, EmailError> {
-        let Some(endpoint) = &self.endpoint else {
-            return Ok(EmailDeliveryOutcome::SkippedNotConfigured);
-        };
+        match &self.transport {
+            EmailTransport::Proxy {
+                endpoint,
+                http_client,
+            } => send_via_proxy(endpoint.as_ref(), http_client, request).await,
+            #[cfg(test)]
+            EmailTransport::Mock { responses } => {
+                let Ok(mut responses) = responses.lock() else {
+                    return Err(EmailError::Proxy {
+                        status: 500,
+                        body: "mock email client response lock is poisoned".to_string(),
+                    });
+                };
 
-        let response = self
-            .http_client
-            .post(&endpoint.url)
-            .bearer_auth(&endpoint.token)
-            .json(&EmailProxyRequest {
-                to: &request.recipient_email,
-                subject: &request.subject,
-                text: &request.message,
-            })
-            .send()
-            .await
-            .map_err(EmailError::Request)?;
-
-        let status = response.status();
-        if status == StatusCode::TOO_MANY_REQUESTS {
-            return Err(EmailError::RateLimited);
+                match responses.pop_front() {
+                    Some(result) => result,
+                    None => Ok(EmailDeliveryOutcome::SkippedNotConfigured),
+                }
+            }
         }
-
-        if !status.is_success() {
-            let body = response.text().await.map_or_else(
-                |error| format!("unable to read email proxy error body: {error}"),
-                truncate_error_body,
-            );
-
-            return Err(EmailError::Proxy {
-                status: status.as_u16(),
-                body,
-            });
-        }
-
-        let proxy_response = response
-            .json::<EmailProxyResponse>()
-            .await
-            .map_err(EmailError::InvalidResponse)?;
-
-        Ok(EmailDeliveryOutcome::Delivered {
-            message_id: proxy_response.id,
-        })
     }
+}
+
+async fn send_via_proxy(
+    endpoint: Option<&EmailEndpoint>,
+    http_client: &reqwest::Client,
+    request: &SendRequest,
+) -> Result<EmailDeliveryOutcome, EmailError> {
+    let Some(endpoint) = endpoint else {
+        return Ok(EmailDeliveryOutcome::SkippedNotConfigured);
+    };
+
+    let response = http_client
+        .post(&endpoint.url)
+        .bearer_auth(&endpoint.token)
+        .json(&EmailProxyRequest {
+            to: &request.recipient_email,
+            subject: &request.subject,
+            text: &request.message,
+        })
+        .send()
+        .await
+        .map_err(EmailError::Request)?;
+
+    let status = response.status();
+    if status == StatusCode::TOO_MANY_REQUESTS {
+        return Err(EmailError::RateLimited);
+    }
+
+    if !status.is_success() {
+        let body = response.text().await.map_or_else(
+            |error| format!("unable to read email proxy error body: {error}"),
+            truncate_error_body,
+        );
+
+        return Err(EmailError::Proxy {
+            status: status.as_u16(),
+            body,
+        });
+    }
+
+    let proxy_response = response
+        .json::<EmailProxyResponse>()
+        .await
+        .map_err(EmailError::InvalidResponse)?;
+
+    Ok(EmailDeliveryOutcome::Delivered {
+        message_id: proxy_response.id,
+    })
 }
 
 #[derive(Clone)]
@@ -91,6 +145,7 @@ struct EmailProxyResponse {
     id: Option<String>,
 }
 
+#[derive(Debug)]
 pub enum EmailDeliveryOutcome {
     Delivered { message_id: Option<String> },
     SkippedNotConfigured,
