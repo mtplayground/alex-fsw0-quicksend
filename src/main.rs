@@ -1,5 +1,8 @@
 mod app;
 mod config;
+mod models;
+mod routes;
+mod validation;
 
 use std::process::ExitCode;
 
