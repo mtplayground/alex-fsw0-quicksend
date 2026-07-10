@@ -52,6 +52,16 @@ impl ErrorResponse {
         }
     }
 
+    pub fn rate_limited() -> Self {
+        Self {
+            error: ErrorBody {
+                code: "rate_limited",
+                message: "Too many send attempts. Try again later.",
+                fields: Vec::new(),
+            },
+        }
+    }
+
     pub fn delivery_failed() -> Self {
         Self {
             error: ErrorBody {

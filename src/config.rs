@@ -19,6 +19,19 @@ pub struct Config {
 
 impl Config {
     pub fn from_env() -> Result<Self, ConfigError> {
+        let rate_limit_requests_per_window = read_parsed(
+            "RATE_LIMIT_REQUESTS_PER_WINDOW",
+            DEFAULT_RATE_LIMIT_REQUESTS_PER_WINDOW,
+        )?;
+        let rate_limit_window_seconds =
+            read_parsed("RATE_LIMIT_WINDOW_SECONDS", DEFAULT_RATE_LIMIT_WINDOW_SECONDS)?;
+
+        ensure_positive_u32(
+            "RATE_LIMIT_REQUESTS_PER_WINDOW",
+            rate_limit_requests_per_window,
+        )?;
+        ensure_positive_u64("RATE_LIMIT_WINDOW_SECONDS", rate_limit_window_seconds)?;
+
         Ok(Self {
             host: read_parsed(
                 "HOST",
@@ -35,14 +48,8 @@ impl Config {
                 .unwrap_or_else(|| DEFAULT_FRONTEND_DIST_DIR.to_string()),
             email_proxy_url: read_optional("MCTAI_EMAIL_URL")?,
             email_app_token: read_optional("MCTAI_EMAIL_APP_TOKEN")?,
-            rate_limit_requests_per_window: read_parsed(
-                "RATE_LIMIT_REQUESTS_PER_WINDOW",
-                DEFAULT_RATE_LIMIT_REQUESTS_PER_WINDOW,
-            )?,
-            rate_limit_window_seconds: read_parsed(
-                "RATE_LIMIT_WINDOW_SECONDS",
-                DEFAULT_RATE_LIMIT_WINDOW_SECONDS,
-            )?,
+            rate_limit_requests_per_window,
+            rate_limit_window_seconds,
         })
     }
 
@@ -81,6 +88,30 @@ where
         value: raw_value,
         message: source.to_string(),
     })
+}
+
+fn ensure_positive_u32(name: &'static str, value: u32) -> Result<(), ConfigError> {
+    if value == 0 {
+        return Err(ConfigError {
+            variable: name,
+            value: value.to_string(),
+            message: "value must be greater than zero".to_string(),
+        });
+    }
+
+    Ok(())
+}
+
+fn ensure_positive_u64(name: &'static str, value: u64) -> Result<(), ConfigError> {
+    if value == 0 {
+        return Err(ConfigError {
+            variable: name,
+            value: value.to_string(),
+            message: "value must be greater than zero".to_string(),
+        });
+    }
+
+    Ok(())
 }
 
 #[derive(Debug)]
