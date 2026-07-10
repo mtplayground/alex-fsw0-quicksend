@@ -1,5 +1,6 @@
 mod app;
 mod config;
+mod email;
 mod models;
 mod routes;
 mod validation;

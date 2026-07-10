@@ -7,18 +7,24 @@ use serde::Serialize;
 use tower_http::services::{ServeDir, ServeFile};
 
 use crate::config::Config;
+use crate::email::EmailClient;
 use crate::routes;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
+    pub email_client: EmailClient,
 }
 
 pub fn build_router(config: Config) -> Router {
     let frontend_dist_dir = config.frontend_dist_dir.clone();
     let index_path = format!("{frontend_dist_dir}/index.html");
     let static_files = ServeDir::new(frontend_dist_dir).fallback(ServeFile::new(index_path));
-    let state = AppState { config };
+    let email_client = EmailClient::from_config(&config);
+    let state = AppState {
+        config,
+        email_client,
+    };
 
     Router::new()
         .route("/health", get(health_check))

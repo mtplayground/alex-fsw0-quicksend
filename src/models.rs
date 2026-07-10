@@ -12,6 +12,8 @@ pub struct SendRequest {
 pub struct SendResponse {
     pub status: &'static str,
     pub message: &'static str,
+    pub delivery_status: &'static str,
+    pub message_id: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -36,6 +38,26 @@ impl ErrorResponse {
                 code: "validation_failed",
                 message: "Request payload failed validation.",
                 fields,
+            },
+        }
+    }
+
+    pub fn email_rate_limited() -> Self {
+        Self {
+            error: ErrorBody {
+                code: "email_rate_limited",
+                message: "Email delivery is temporarily rate limited. Try again shortly.",
+                fields: Vec::new(),
+            },
+        }
+    }
+
+    pub fn delivery_failed() -> Self {
+        Self {
+            error: ErrorBody {
+                code: "delivery_failed",
+                message: "Email delivery failed. Try again later.",
+                fields: Vec::new(),
             },
         }
     }
